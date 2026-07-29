@@ -370,13 +370,13 @@
       row = [`${dd}/${mm}/${yy}`, entry.from||'', entry.description||'', entry.fapiao||'', `¥${entry.amount.toFixed(2)}`, entry.category, entry.sent||'N/A', entry.photo||'Pending', entry.comments||''];
     }
 
+    const payload = JSON.stringify({ sheet: `${type === 'personal' ? 'Personal' : 'OPEX'} - ${sName}`, headers, row });
+
     try {
-      await fetch(SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheet: `${type === 'personal' ? 'Personal' : 'OPEX'} - ${sName}`, headers, row })
-      });
+      // Use a URL-encoded form approach compatible with no-cors
+      const form = new FormData();
+      form.append('payload', payload);
+      await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: form });
       setSyncStatus('synced', `Synced · ${new Date().toLocaleTimeString()}`);
     } catch(err) {
       setSyncStatus('error', 'Sync failed — saved locally');
