@@ -327,6 +327,7 @@
 <script>
   const SHEETDB_URL = 'https://sheetdb.io/api/v1/bnfjpa3plzyju';
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const SHEET_MONTHS = ['August','September','October','November','December','January','February','March','April','May','June','July'];
 
   // ── STATE ──
   let personal = JSON.parse(localStorage.getItem('personal') || '[]');
@@ -599,7 +600,6 @@
   }
 
   // ── LOAD FROM SHEETDB ──
-  const SHEET_MONTHS = ['August','September','October','November','December','January','February','March','April','May','June','July'];
 
   function parseDate(dateStr) {
     if (!dateStr) return { day:1, month:'January', year:2026 };
@@ -759,4 +759,3 @@
 </script>
 </body>
 </html>
-
