@@ -601,72 +601,91 @@
   // ── LOAD FROM SHEETDB ──
   const SHEET_MONTHS = ['August','September','October','November','December','January','February','March','April','May','June','July'];
 
+  function parseDate(dateStr) {
+    // Handle dd/mm/yy format
+    if (!dateStr) return { day:1, month:'January', year:2026 };
+    const parts = String(dateStr).split('/');
+    if (parts.length === 3) {
+      const day = parseInt(parts[0]);
+      const monthNum = parseInt(parts[1]) - 1;
+      const year = 2000 + parseInt(parts[2]);
+      return { day, month: MONTHS[monthNum], year };
+    }
+    return { day:1, month:'January', year:2026 };
+  }
+
+  function parseAmount(str) {
+    if (!str) return 0;
+    return parseFloat(String(str).replace(/[^0-9.]/g,'')) || 0;
+  }
+
+  function parseSymbol(str) {
+    if (!str) return '¥';
+    const s = String(str).trim();
+    if (s.startsWith('€')) return '€';
+    if (s.startsWith('$')) return '$';
+    return '¥';
+  }
+
   async function loadFromSheets() {
-    setSyncStatus('syncing', 'Loading data...');
+    setSyncStatus('syncing', 'Loading...');
     try {
       let allPersonal = [];
       let allOpex = [];
 
       for (const month of SHEET_MONTHS) {
-        // Load personal
-        const pRes = await fetch(`${SHEETDB_URL}?sheet=Personal-${month}`);
-        const pData = await pRes.json();
-        if (Array.isArray(pData) && pData.length > 0) {
-          pData.forEach(row => {
-            if (!row.DATE) return;
-            const parts = row.DATE.split('/');
-            if (parts.length < 3) return;
-            const amount = parseFloat((row.Amount||'0').replace(/[^0-9.]/g,'')) || 0;
-            const symbol = (row.Amount||'¥')[0];
-            const currency = symbol === '€' ? 'EUR' : symbol === '$' ? 'USD' : 'RMB';
-            allPersonal.push({
-              id: `${month}-${row.DATE}-${Math.random()}`,
-              day: parseInt(parts[0]),
-              month: month,
-              year: 2000 + parseInt(parts[2]),
-              category: row.Expense || '',
-              amount,
-              currency,
-              symbol: symbol === '¥' || symbol === 'Â' ? '¥' : symbol,
-              payer: row['Who Paid'] || '',
-              comment: row.Comments || ''
+        try {
+          const pRes = await fetch(`${SHEETDB_URL}?sheet=Personal-${month}&limit=500`);
+          const pData = await pRes.json();
+          if (Array.isArray(pData)) {
+            pData.forEach((row, i) => {
+              if (!row.DATE || !row.Expense) return;
+              const { day, month: m, year } = parseDate(row.DATE);
+              const sym = parseSymbol(row.Amount);
+              const cur = sym === '€' ? 'EUR' : sym === '$' ? 'USD' : 'RMB';
+              allPersonal.push({
+                id: `p-${month}-${i}-${day}`,
+                day, month: m || month, year,
+                category: row.Expense || '',
+                amount: parseAmount(row.Amount),
+                currency: cur, symbol: sym,
+                payer: row['Who Paid'] || '',
+                comment: row.Comments || ''
+              });
             });
-          });
-        }
+          }
+        } catch(e) {}
 
-        // Load opex
-        const oRes = await fetch(`${SHEETDB_URL}?sheet=OPEX-${month}`);
-        const oData = await oRes.json();
-        if (Array.isArray(oData) && oData.length > 0) {
-          oData.forEach(row => {
-            if (!row['Date Received']) return;
-            const parts = (row['Date Received']||'').split('/');
-            if (parts.length < 3) return;
-            const amount = parseFloat((row['Amount (RMB)']||'0').replace(/[^0-9.]/g,'')) || 0;
-            allOpex.push({
-              id: `${month}-${row['Date Received']}-${Math.random()}`,
-              day: parseInt(parts[0]),
-              month: month,
-              year: 2000 + parseInt(parts[2]),
-              from: row['From Whom'] || '',
-              description: row['Description'] || '',
-              fapiao: row['Fapiao Number'] || '',
-              amount,
-              category: row['Category'] || '',
-              sent: row['Sent to @L?'] || 'N/A',
-              photo: row['Photo/Scan Saved'] || 'Pending',
-              comments: row['Comments'] || ''
+        try {
+          const oRes = await fetch(`${SHEETDB_URL}?sheet=OPEX-${month}&limit=500`);
+          const oData = await oRes.json();
+          if (Array.isArray(oData)) {
+            oData.forEach((row, i) => {
+              if (!row['Date Received'] && !row['Category']) return;
+              const { day, month: m, year } = parseDate(row['Date Received']);
+              allOpex.push({
+                id: `o-${month}-${i}-${day}`,
+                day, month: m || month, year,
+                from: row['From Whom'] || '',
+                description: row['Description'] || '',
+                fapiao: row['Fapiao Number'] || '',
+                amount: parseAmount(row['Amount (RMB)']),
+                category: row['Category'] || '',
+                sent: row['Sent to @L?'] || 'N/A',
+                photo: row['Photo/Scan Saved'] || 'Pending',
+                comments: row['Comments'] || ''
+              });
             });
-          });
-        }
+          }
+        } catch(e) {}
       }
 
       personal = allPersonal;
       opex = allOpex;
-      localStorage.setItem('personal', JSON.stringify(personal));
-      localStorage.setItem('opex', JSON.stringify(opex));
-      setSyncStatus('synced', `Loaded · ${new Date().toLocaleTimeString()}`);
-      renderPersonalList(); renderOpexList(); renderSummary();
+      setSyncStatus('synced', `Synced · ${new Date().toLocaleTimeString()}`);
+      renderPersonalList();
+      renderOpexList();
+      renderSummary();
     } catch(err) {
       setSyncStatus('error', 'Load failed — using local data');
     }
