@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Expense Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f4f8; min-height: 100vh; padding-bottom: 40px; }
+
+  header { background: #1a1a2e; color: white; padding: 16px 20px 12px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+  header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: 0.5px; }
+
+  .sync-bar { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; }
+  .sync-status { font-size: 0.68rem; opacity: 0.7; }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; display: inline-block; }
+  .sync-dot.synced  { background: #10b981; }
+  .sync-dot.syncing { background: #f59e0b; animation: pulse 1s infinite; }
+  .sync-dot.error   { background: #ef4444; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .period-bar { font-size: 0.72rem; opacity: 0.7; margin-top: 4px; cursor: pointer; }
+
+  #period-picker { display:none; margin-top:10px; background:rgba(255,255,255,0.1); border-radius:10px; padding:10px; }
+  #period-picker select { background:#16213e; color:white; border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:7px; font-size:0.85rem; width:100%; }
+  .period-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+  .btn-period { width:100%; padding:8px; background:#e94560; color:white; border:none; border-radius:8px; font-weight:700; font-size:0.85rem; cursor:pointer; }
+  .btn-clear  { width:100%; padding:6px; background:transparent; color:rgba(255,255,255,0.5); border:none; font-size:0.78rem; cursor:pointer; margin-top:4px; }
+
+  .tabs { display:flex; background:#16213e; overflow-x:auto; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tab-btn { flex:1; min-width:80px; padding:11px 6px; border:none; background:transparent; color:rgba(255,255,255,0.45); font-size:0.68rem; font-weight:700; cursor:pointer; transition:all 0.2s; border-bottom:3px solid transparent; white-space:nowrap; line-height:1.3; }
+  .tab-btn.active { color:#e94560; border-bottom-color:#e94560; }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  .section-label { margin:14px 16px 0; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#9ca3af; }
+  .form-card { background:white; margin:10px 16px 16px; border-radius:16px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.07); }
+  .field-group { margin-bottom:16px; }
+  label { display:block; font-size:0.68rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:5px; }
+  .date-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+
+  select, input[type="number"], input[type="text"], textarea {
+    width:100%; padding:12px 14px; border:2px solid #e5e7eb; border-radius:10px;
+    font-size:0.95rem; color:#1a1a2e; background:#f9fafb; outline:none;
+    transition:border-color 0.2s; appearance:none; -webkit-appearance:none; font-family:inherit;
+  }
+  select:focus, input:focus, textarea:focus { border-color:#e94560; background:white; }
+  textarea { resize:none; height:76px; }
+
+  .pill-grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  .pill-grid-2 { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; }
+  .pill-col    { display:flex; flex-direction:column; gap:7px; }
+
+  .pill { padding:9px 5px; border:2px solid #e5e7eb; border-radius:10px; text-align:center; font-size:0.74rem; font-weight:600; color:#6b7280; cursor:pointer; transition:all 0.15s; background:#f9fafb; }
+  .pill-icon { display:block; font-size:1.2rem; margin-bottom:2px; }
+  .pill.p-selected   { border-color:#e94560; background:#fff0f3; color:#e94560; }
+  .pill.o-selected   { border-color:#7c3aed; background:#f5f3ff; color:#7c3aed; }
+  .pill.c-selected   { border-color:#4f6ef7; background:#f0f4ff; color:#4f6ef7; }
+  .pill.pay-selected { border-color:#1a1a2e; background:#1a1a2e; color:white; }
+  .pill.ph-selected  { border-color:#059669; background:#f0fff4; color:#059669; }
+
+  .amount-wrap { position:relative; }
+  .amount-wrap input { padding-left:52px; font-size:1.25rem; font-weight:700; }
+  .currency-badge { position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:0.82rem; font-weight:800; color:#e94560; }
+
+  .btn-add { width:100%; padding:15px; background:#e94560; color:white; border:none; border-radius:12px; font-size:0.95rem; font-weight:700; cursor:pointer; margin-top:4px; }
+  .btn-add.opex { background:#7c3aed; }
+  .btn-add:active { opacity:0.85; }
+  .btn-add:disabled { opacity:0.5; cursor:not-allowed; }
+
+  .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%) translateY(80px); background:#1a1a2e; color:white; padding:12px 24px; border-radius:30px; font-size:0.88rem; font-weight:600; transition:transform 0.3s ease; z-index:999; white-space:nowrap; }
+  .toast.show { transform:translateX(-50%) translateY(0); }
+
+  .list-controls { padding:14px 16px 0; display:flex; justify-content:space-between; align-items:center; }
+  .expense-count { font-size:0.78rem; color:#6b7280; font-weight:600; }
+  .btn-export { padding:8px 16px; background:#1a1a2e; color:white; border:none; border-radius:20px; font-size:0.76rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; }
+  .btn-export.opex-btn { background:#7c3aed; }
+  .expense-list { padding:12px 16px; }
+
+  .expense-item { background:white; border-radius:14px; padding:13px 15px; margin-bottom:9px; box-shadow:0 1px 6px rgba(0,0,0,0.07); display:grid; grid-template-columns:1fr auto; gap:4px; align-items:start; }
+  .expense-item.opex-item { border-left:4px solid #7c3aed; }
+  .expense-date { font-size:0.67rem; color:#9ca3af; font-weight:700; text-transform:uppercase; }
+  .expense-concept { font-size:0.92rem; font-weight:700; color:#1a1a2e; margin:2px 0; }
+  .expense-meta { display:flex; gap:5px; flex-wrap:wrap; margin-top:4px; }
+  .badge { font-size:0.67rem; font-weight:700; padding:3px 7px; border-radius:20px; }
+  .badge-cat   { background:#f0f4ff; color:#4f6ef7; }
+  .badge-cat-o { background:#f5f3ff; color:#7c3aed; }
+  .badge-payer { background:#f0fff4; color:#059669; }
+  .badge-photo-yes     { background:#dcfce7; color:#16a34a; }
+  .badge-photo-no      { background:#fee2e2; color:#dc2626; }
+  .badge-photo-pending { background:#fef9c3; color:#ca8a04; }
+  .expense-amount { font-size:1.15rem; font-weight:800; color:#e94560; text-align:right; }
+  .expense-amount.opex { color:#7c3aed; }
+  .expense-cur { font-size:0.62rem; color:#9ca3af; text-align:right; }
+  .btn-delete { background:none; border:none; color:#d1d5db; font-size:1rem; cursor:pointer; padding:2px 0 0 6px; }
+
+  .empty-state { text-align:center; padding:50px 20px; color:#9ca3af; }
+  .empty-state .icon { font-size:2.8rem; margin-bottom:10px; }
+
+  .summary-card { background:#1a1a2e; margin:14px 16px 0; border-radius:16px; padding:18px; color:white; }
+  .summary-card.opex { background:#2e1065; }
+  .summary-title { font-size:0.68rem; font-weight:800; text-transform:uppercase; letter-spacing:0.9px; opacity:0.55; margin-bottom:12px; }
+  .summary-row { display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.08); font-size:0.88rem; }
+  .summary-row:last-child { border-bottom:none; }
+  .summary-row span:last-child { font-weight:700; }
+  .summary-total { font-size:1rem !important; color:#e94560; }
+  .summary-total-opex { font-size:1rem !important; color:#a78bfa; }
+
+  .offline-banner { background:#f59e0b; color:white; text-align:center; padding:6px; font-size:0.75rem; font-weight:700; display:none; }
+  .offline-banner.show { display:block; }
+</style>
+</head>
+<body>
+
+<div class="offline-banner" id="offline-banner">⚠️ Offline — data saved locally, will sync when connected</div>
+
+<header>
+  <h1 id="main-title">💰 Expense Tracker</h1>
+  <div class="sync-bar">
+    <span class="sync-dot" id="sync-dot"></span>
+    <span class="sync-status" id="sync-status">Not synced yet</span>
+  </div>
+  <div class="period-bar" onclick="togglePeriodPicker()">📅 <span id="period-label">All entries</span> ▾</div>
+  <div id="period-picker">
+    <div class="period-row">
+      <select id="filter-month">
+        <option value="">All months</option>
+        <option>January</option><option>February</option><option>March</option>
+        <option>April</option><option>May</option><option>June</option>
+        <option>July</option><option>August</option><option>September</option>
+        <option>October</option><option>November</option><option>December</option>
+      </select>
+      <select id="filter-year"><option value="">All years</option></select>
+    </div>
+    <button class="btn-period" onclick="applyPeriod()">Apply</button>
+    <button class="btn-clear"  onclick="clearPeriod()">Clear filter — show all</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('personal',this)">🏠<br>Personal</button>
+  <button class="tab-btn"        onclick="switchTab('opex',this)">🏢<br>OPEX</button>
+  <button class="tab-btn"        onclick="switchTab('list',this)">📋<br>All Lists</button>
+  <button class="tab-btn"        onclick="switchTab('summary',this)">📊<br>Summary</button>
+</div>
+
+<!-- TAB 1 · PERSONAL -->
+<div id="tab-personal" class="tab-content active">
+  <div class="section-label">Personal Expenses</div>
+  <div class="form-card">
+    <div class="field-group">
+      <label>Date</label>
+      <div class="date-row">
+        <select id="p-day"></select>
+        <select id="p-month">
+          <option value="">Month</option>
+          <option>January</option><option>February</option><option>March</option>
+          <option>April</option><option>May</option><option>June</option>
+          <option>July</option><option>August</option><option>September</option>
+          <option>October</option><option>November</option><option>December</option>
+        </select>
+        <select id="p-year"></select>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Category</label>
+      <div class="pill-grid-3" id="p-cat-pills">
+        <div class="pill" onclick="selectPill('p-cat','Utilities',this,'p-selected')"><span class="pill-icon">💡</span>Utilities</div>
+        <div class="pill" onclick="selectPill('p-cat','Cleaning',this,'p-selected')"><span class="pill-icon">🧹</span>Cleaning</div>
+        <div class="pill" onclick="selectPill('p-cat','Food',this,'p-selected')"><span class="pill-icon">🍜</span>Food</div>
+        <div class="pill" onclick="selectPill('p-cat','Transport',this,'p-selected')"><span class="pill-icon">🚇</span>Transport</div>
+        <div class="pill" onclick="selectPill('p-cat','Others',this,'p-selected')"><span class="pill-icon">📦</span>Others</div>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Currency</label>
+      <div class="pill-grid-3" id="p-cur-pills">
+        <div class="pill c-selected" onclick="selectPill('p-cur','RMB|¥',this,'c-selected')">🇨🇳 RMB</div>
+        <div class="pill" onclick="selectPill('p-cur','EUR|€',this,'c-selected')">🇪🇺 EUR</div>
+        <div class="pill" onclick="selectPill('p-cur','USD|$',this,'c-selected')">🇺🇸 USD</div>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Amount</label>
+      <div class="amount-wrap">
+        <span class="currency-badge" id="p-cur-badge">¥</span>
+        <input type="number" id="p-amount" placeholder="0.00" step="0.01" min="0">
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Paid by</label>
+      <div class="pill-col" id="p-pay-pills">
+        <div class="pill" onclick="selectPill('p-pay','Brent',this,'pay-selected')">Brent</div>
+        <div class="pill" onclick="selectPill('p-pay','Maria',this,'pay-selected')">Maria</div>
+        <div class="pill" onclick="selectPill('p-pay','Shared',this,'pay-selected')">Shared</div>
+        <div class="pill" onclick="selectPill('p-pay','Brent (not shared)',this,'pay-selected')">Brent (not shared)</div>
+        <div class="pill" onclick="selectPill('p-pay','Maria (not shared)',this,'pay-selected')">Maria (not shared)</div>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Concept / Comment</label>
+      <textarea id="p-comment" placeholder="What was this expense for?"></textarea>
+    </div>
+    <button class="btn-add" id="btn-add-personal" onclick="addPersonal()">＋ Add Personal Expense</button>
+  </div>
+</div>
+
+<!-- TAB 2 · OPEX -->
+<div id="tab-opex" class="tab-content">
+  <div class="section-label">Company Expenses · OPEX</div>
+  <div class="form-card">
+    <div class="field-group">
+      <label>Date Received</label>
+      <div class="date-row">
+        <select id="o-day"></select>
+        <select id="o-month">
+          <option value="">Month</option>
+          <option>January</option><option>February</option><option>March</option>
+          <option>April</option><option>May</option><option>June</option>
+          <option>July</option><option>August</option><option>September</option>
+          <option>October</option><option>November</option><option>December</option>
+        </select>
+        <select id="o-year"></select>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>From Whom (Supplier / Issuer)</label>
+      <input type="text" id="o-from" placeholder="Who issued this invoice?">
+    </div>
+    <div class="field-group">
+      <label>Description</label>
+      <textarea id="o-description" placeholder="What was purchased?"></textarea>
+    </div>
+    <div class="field-group">
+      <label>Fapiao Number</label>
+      <input type="text" id="o-fapiao" placeholder="Invoice / Fapiao number">
+    </div>
+    <div class="field-group">
+      <label>Amount (RMB)</label>
+      <div class="amount-wrap">
+        <span class="currency-badge">¥</span>
+        <input type="number" id="o-amount" placeholder="0.00" step="0.01" min="0">
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Category</label>
+      <div class="pill-grid-2" id="o-cat-pills">
+        <div class="pill" onclick="selectPill('o-cat','Supplier Payment',this,'o-selected')"><span class="pill-icon">🏭</span>Supplier Payment</div>
+        <div class="pill" onclick="selectPill('o-cat','Travel',this,'o-selected')"><span class="pill-icon">✈️</span>Travel</div>
+        <div class="pill" onclick="selectPill('o-cat','Transport',this,'o-selected')"><span class="pill-icon">🚗</span>Transport</div>
+        <div class="pill" onclick="selectPill('o-cat','Entertainment',this,'o-selected')"><span class="pill-icon">🎉</span>Entertainment</div>
+        <div class="pill" onclick="selectPill('o-cat','Software',this,'o-selected')"><span class="pill-icon">💻</span>Software</div>
+        <div class="pill" onclick="selectPill('o-cat','Office Supplies',this,'o-selected')"><span class="pill-icon">📎</span>Office Supplies</div>
+        <div class="pill" onclick="selectPill('o-cat','Marketing',this,'o-selected')"><span class="pill-icon">📣</span>Marketing</div>
+        <div class="pill" onclick="selectPill('o-cat','Phone',this,'o-selected')"><span class="pill-icon">📱</span>Phone</div>
+        <div class="pill" onclick="selectPill('o-cat','Food',this,'o-selected')"><span class="pill-icon">🍽️</span>Food</div>
+        <div class="pill" onclick="selectPill('o-cat','Office Mgmt Fees',this,'o-selected')"><span class="pill-icon">🏢</span>Office Mgmt Fees</div>
+        <div class="pill" onclick="selectPill('o-cat','Others',this,'o-selected')"><span class="pill-icon">📦</span>Others</div>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Sent to @L?</label>
+      <div class="pill-grid-3" id="o-sent-pills">
+        <div class="pill" onclick="selectPill('o-sent','Yes',this,'ph-selected')">✅ Yes</div>
+        <div class="pill" onclick="selectPill('o-sent','No',this,'ph-selected')">❌ No</div>
+        <div class="pill" onclick="selectPill('o-sent','N/A',this,'ph-selected')">➖ N/A</div>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Photo / Scan Saved</label>
+      <div class="pill-grid-3" id="o-photo-pills">
+        <div class="pill" onclick="selectPill('o-photo','Yes',this,'ph-selected')">✅ Yes</div>
+        <div class="pill" onclick="selectPill('o-photo','No',this,'ph-selected')">❌ No</div>
+        <div class="pill" onclick="selectPill('o-photo','Pending',this,'ph-selected')">⏳ Pending</div>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Comments</label>
+      <textarea id="o-comments" placeholder="Any additional notes..."></textarea>
+    </div>
+    <button class="btn-add opex" id="btn-add-opex" onclick="addOpex()">＋ Add OPEX Entry</button>
+  </div>
+</div>
+
+<!-- TAB 3 · ALL LISTS -->
+<div id="tab-list" class="tab-content">
+  <div class="list-controls">
+    <span class="expense-count" id="p-count">Personal: 0</span>
+    <button class="btn-export" onclick="exportPersonal()">⬇ Export Personal</button>
+  </div>
+  <div class="expense-list" id="p-list">
+    <div class="empty-state"><div class="icon">🏠</div><p>No personal expenses yet.</p></div>
+  </div>
+  <div class="list-controls" style="margin-top:8px">
+    <span class="expense-count" id="o-count">OPEX: 0</span>
+    <button class="btn-export opex-btn" onclick="exportOpex()">⬇ Export OPEX</button>
+  </div>
+  <div class="expense-list" id="o-list">
+    <div class="empty-state"><div class="icon">🏢</div><p>No OPEX entries yet.</p></div>
+  </div>
+</div>
+
+<!-- TAB 4 · SUMMARY -->
+<div id="tab-summary" class="tab-content">
+  <div class="summary-card">
+    <div class="summary-title">🏠 Personal · By Category</div>
+    <div id="sum-p-cat"></div>
+  </div>
+  <div class="summary-card" style="margin-top:10px">
+    <div class="summary-title">🏠 Personal · By Payer</div>
+    <div id="sum-p-pay"></div>
+  </div>
+  <div class="summary-card opex" style="margin-top:10px">
+    <div class="summary-title">🏢 OPEX · By Category</div>
+    <div id="sum-o-cat"></div>
+  </div>
+  <div class="summary-card opex" style="margin-top:10px; margin-bottom:20px">
+    <div class="summary-title">🏢 OPEX · Photo Status</div>
+    <div id="sum-o-photo"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygHO-C4d1gx03HmsnP8GiRLWi1PJ29TCXfUm-v7ixz8DmKb9ht9cGhqVUebeZDJ38E2g/exec';
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  // ── STATE ──
+  let personal = JSON.parse(localStorage.getItem('personal') || '[]');
+  let opex     = JSON.parse(localStorage.getItem('opex')     || '[]');
+  const sel = { 'p-cat':'','p-cur':'RMB|¥','p-pay':'','o-cat':'','o-photo':'','o-sent':'' };
+
+  // ── PERIOD FILTER ──
+  let filterMonth = localStorage.getItem('filterMonth') || '';
+  let filterYear  = localStorage.getItem('filterYear')  || '';
+
+  // ── SYNC STATE ──
+  function setSyncStatus(state, msg) {
+    const dot = document.getElementById('sync-dot');
+    const txt = document.getElementById('sync-status');
+    dot.className = 'sync-dot ' + state;
+    txt.textContent = msg;
+  }
+
+  // ── SHEET NAME from month+year ──
+  function sheetName(month, year) {
+    return `${month} ${year}`;
+  }
+
+  // ── SEND ROW TO GOOGLE SHEETS ──
+  async function syncToSheets(type, entry) {
+    setSyncStatus('syncing', 'Syncing...');
+    const sName = sheetName(entry.month, entry.year);
+
+    let headers, row;
+    if (type === 'personal') {
+      const mm = String(MONTHS.indexOf(entry.month)+1).padStart(2,'0');
+      const dd = String(entry.day).padStart(2,'0');
+      const yy = String(entry.year).slice(-2);
+      headers = ['DATE','Expense','Amount','Who Paid','Comments'];
+      row = [`${dd}/${mm}/${yy}`, entry.category, `${entry.symbol}${entry.amount.toFixed(2)}`, entry.payer, entry.comment||''];
+    } else {
+      const mm = String(MONTHS.indexOf(entry.month)+1).padStart(2,'0');
+      const dd = String(entry.day).padStart(2,'0');
+      const yy = String(entry.year).slice(-2);
+      headers = ['Date Received','From Whom','Description','Fapiao Number','Amount (RMB)','Category','Sent to @L?','Photo/Scan Saved','Comments'];
+      row = [`${dd}/${mm}/${yy}`, entry.from||'', entry.description||'', entry.fapiao||'', `¥${entry.amount.toFixed(2)}`, entry.category, entry.sent||'N/A', entry.photo||'Pending', entry.comments||''];
+    }
+
+    try {
+      await fetch(SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheet: `${type === 'personal' ? 'Personal' : 'OPEX'} - ${sName}`, headers, row })
+      });
+      setSyncStatus('synced', `Synced · ${new Date().toLocaleTimeString()}`);
+    } catch(err) {
+      setSyncStatus('error', 'Sync failed — saved locally');
+    }
+  }
+
+  // ── PERIOD UI ──
+  function togglePeriodPicker() {
+    const p = document.getElementById('period-picker');
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  }
+  function applyPeriod() {
+    filterMonth = document.getElementById('filter-month').value;
+    filterYear  = document.getElementById('filter-year').value;
+    localStorage.setItem('filterMonth', filterMonth);
+    localStorage.setItem('filterYear',  filterYear);
+    updatePeriodUI();
+    document.getElementById('period-picker').style.display = 'none';
+    renderPersonalList(); renderOpexList(); renderSummary();
+  }
+  function clearPeriod() {
+    filterMonth = ''; filterYear = '';
+    localStorage.removeItem('filterMonth'); localStorage.removeItem('filterYear');
+    document.getElementById('filter-month').value = '';
+    document.getElementById('filter-year').value  = '';
+    updatePeriodUI();
+    document.getElementById('period-picker').style.display = 'none';
+    renderPersonalList(); renderOpexList(); renderSummary();
+  }
+  function updatePeriodUI() {
+    const lbl   = document.getElementById('period-label');
+    const title = document.getElementById('main-title');
+    if (filterMonth && filterYear) { lbl.textContent = `${filterMonth} ${filterYear}`; title.textContent = `💰 Expenses · ${filterMonth} ${filterYear}`; }
+    else if (filterMonth) { lbl.textContent = filterMonth; title.textContent = `💰 Expenses · ${filterMonth}`; }
+    else if (filterYear)  { lbl.textContent = filterYear;  title.textContent = `💰 Expenses · ${filterYear}`; }
+    else { lbl.textContent = 'All entries'; title.textContent = '💰 Expense Tracker'; }
+  }
+  function filterByPeriod(arr) {
+    return arr.filter(e => {
+      const mOk = !filterMonth || e.month === filterMonth;
+      const yOk = !filterYear  || String(e.year) === String(filterYear);
+      return mOk && yOk;
+    });
+  }
+  function periodSuffix() {
+    if (filterMonth && filterYear) return `${filterMonth}-${filterYear}`;
+    if (filterMonth) return filterMonth;
+    if (filterYear)  return filterYear;
+    return 'all';
+  }
+
+  // ── INIT ──
+  const today = new Date();
+  function fillDays(id) {
+    const s = document.getElementById(id);
+    for (let i=1;i<=31;i++) { const o=document.createElement('option'); o.value=i; o.textContent=i; s.appendChild(o); }
+  }
+  function fillYears(id) {
+    const s = document.getElementById(id);
+    const yr = today.getFullYear();
+    for (let y=yr;y>=yr-3;y--) { const o=document.createElement('option'); o.value=y; o.textContent=y; s.appendChild(o); }
+    s.value = yr;
+  }
+  fillDays('p-day'); fillDays('o-day');
+  fillYears('p-year'); fillYears('o-year');
+  (function(){
+    const s = document.getElementById('filter-year');
+    const yr = today.getFullYear();
+    for (let y=yr;y>=yr-3;y--) { const o=document.createElement('option'); o.value=y; o.textContent=y; s.appendChild(o); }
+  })();
+  if (filterMonth) document.getElementById('filter-month').value = filterMonth;
+  if (filterYear)  document.getElementById('filter-year').value  = filterYear;
+  updatePeriodUI();
+  document.getElementById('p-day').value = today.getDate();
+  document.getElementById('p-month').selectedIndex = today.getMonth()+1;
+  document.getElementById('o-day').value = today.getDate();
+  document.getElementById('o-month').selectedIndex = today.getMonth()+1;
+
+  // Offline detection
+  window.addEventListener('offline', () => document.getElementById('offline-banner').classList.add('show'));
+  window.addEventListener('online',  () => document.getElementById('offline-banner').classList.remove('show'));
+  if (!navigator.onLine) document.getElementById('offline-banner').classList.add('show');
+
+  // ── TAB SWITCH ──
+  function switchTab(tab, btn) {
+    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('tab-'+tab).classList.add('active');
+    btn.classList.add('active');
+    if (tab==='list')    { renderPersonalList(); renderOpexList(); }
+    if (tab==='summary') renderSummary();
+  }
+
+  // ── PILL SELECTOR ──
+  function selectPill(group, val, el, cls) {
+    el.parentElement.querySelectorAll('.pill').forEach(p=>p.classList.remove('p-selected','o-selected','c-selected','pay-selected','ph-selected'));
+    el.classList.add(cls);
+    sel[group] = val;
+    if (group==='p-cur') document.getElementById('p-cur-badge').textContent = val.split('|')[1];
+  }
+
+  // ── ADD PERSONAL ──
+  async function addPersonal() {
+    const day   = document.getElementById('p-day').value;
+    const month = document.getElementById('p-month').value;
+    const year  = document.getElementById('p-year').value;
+    const amount  = parseFloat(document.getElementById('p-amount').value);
+    const comment = document.getElementById('p-comment').value.trim();
+    if (!day||!month)       return showToast('⚠️ Please select a date');
+    if (!sel['p-cat'])      return showToast('⚠️ Please select a category');
+    if (!amount||amount<=0) return showToast('⚠️ Please enter an amount');
+    if (!sel['p-pay'])      return showToast('⚠️ Please select who paid');
+    const [currency,symbol] = sel['p-cur'].split('|');
+    const entry = { id:Date.now(), day:parseInt(day), month, year:parseInt(year), category:sel['p-cat'], amount, currency, symbol, payer:sel['p-pay'], comment };
+    personal.push(entry);
+    localStorage.setItem('personal', JSON.stringify(personal));
+    document.getElementById('p-amount').value  = '';
+    document.getElementById('p-comment').value = '';
+    document.getElementById('p-cat-pills').querySelectorAll('.pill').forEach(p=>p.classList.remove('p-selected'));
+    document.getElementById('p-pay-pills').querySelectorAll('.pill').forEach(p=>p.classList.remove('pay-selected'));
+    sel['p-cat']=''; sel['p-pay']='';
+    showToast('✅ Saved! Syncing...');
+    await syncToSheets('personal', entry);
+  }
+
+  // ── ADD OPEX ──
+  async function addOpex() {
+    const day    = document.getElementById('o-day').value;
+    const month  = document.getElementById('o-month').value;
+    const year   = document.getElementById('o-year').value;
+    const from   = document.getElementById('o-from').value.trim();
+    const desc   = document.getElementById('o-description').value.trim();
+    const fapiao = document.getElementById('o-fapiao').value.trim();
+    const amount   = parseFloat(document.getElementById('o-amount').value);
+    const comments = document.getElementById('o-comments').value.trim();
+    if (!day||!month)        return showToast('⚠️ Please select a date');
+    if (!amount||amount<=0)  return showToast('⚠️ Please enter an amount');
+    if (!sel['o-cat'])       return showToast('⚠️ Please select a category');
+    const entry = { id:Date.now(), day:parseInt(day), month, year:parseInt(year), from, description:desc, fapiao, amount, category:sel['o-cat'], sent:sel['o-sent']||'N/A', photo:sel['o-photo']||'Pending', comments };
+    opex.push(entry);
+    localStorage.setItem('opex', JSON.stringify(opex));
+    ['o-from','o-description','o-fapiao','o-amount','o-comments'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('o-cat-pills').querySelectorAll('.pill').forEach(p=>p.classList.remove('o-selected'));
+    document.getElementById('o-photo-pills').querySelectorAll('.pill').forEach(p=>p.classList.remove('ph-selected'));
+    document.getElementById('o-sent-pills').querySelectorAll('.pill').forEach(p=>p.classList.remove('ph-selected'));
+    sel['o-cat']=''; sel['o-photo']=''; sel['o-sent']='';
+    showToast('✅ Saved! Syncing...');
+    await syncToSheets('opex', entry);
+  }
+
+  // ── SORT ──
+  function sortByDate(arr) {
+    return [...arr].sort((a,b)=>{ const mA=MONTHS.indexOf(a.month),mB=MONTHS.indexOf(b.month); return mB!==mA?mB-mA:b.day-a.day; });
+  }
+
+  // ── RENDER PERSONAL LIST ──
+  function renderPersonalList() {
+    const list = document.getElementById('p-list');
+    const filtered = filterByPeriod(personal);
+    document.getElementById('p-count').textContent = `Personal: ${filtered.length}`;
+    if (!filtered.length) { list.innerHTML='<div class="empty-state"><div class="icon">🏠</div><p>No personal expenses for this period.</p></div>'; return; }
+    list.innerHTML = sortByDate(filtered).map(e=>`
+      <div class="expense-item">
+        <div>
+          <div class="expense-date">${e.day} ${e.month} ${e.year||''}</div>
+          <div class="expense-concept">${e.comment||'—'}</div>
+          <div class="expense-meta">
+            <span class="badge badge-cat">${e.category}</span>
+            <span class="badge badge-payer">${e.payer}</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end">
+          <div class="expense-amount">${e.symbol||'¥'}${e.amount.toFixed(2)}</div>
+          <div class="expense-cur">${e.currency||'RMB'}</div>
+          <button class="btn-delete" onclick="deletePersonal(${e.id})">✕</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── RENDER OPEX LIST ──
+  function renderOpexList() {
+    const list = document.getElementById('o-list');
+    const filtered = filterByPeriod(opex);
+    document.getElementById('o-count').textContent = `OPEX: ${filtered.length}`;
+    if (!filtered.length) { list.innerHTML='<div class="empty-state"><div class="icon">🏢</div><p>No OPEX entries for this period.</p></div>'; return; }
+    const photoBadge = p=>p==='Yes'?'badge-photo-yes':p==='No'?'badge-photo-no':'badge-photo-pending';
+    list.innerHTML = sortByDate(filtered).map(e=>`
+      <div class="expense-item opex-item">
+        <div>
+          <div class="expense-date">${e.day} ${e.month} ${e.year||''}${e.fapiao?' · #'+e.fapiao:''}</div>
+          <div class="expense-concept">${e.description||e.from||'—'}</div>
+          <div class="expense-meta">
+            <span class="badge badge-cat-o">${e.category}</span>
+            ${e.from?`<span class="badge badge-payer">${e.from}</span>`:''}
+            <span class="badge" style="background:#ede9fe;color:#6d28d9">@L: ${e.sent||'N/A'}</span>
+            <span class="badge ${photoBadge(e.photo)}">📎 ${e.photo||'Pending'}</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end">
+          <div class="expense-amount opex">¥${e.amount.toFixed(2)}</div>
+          <div class="expense-cur">RMB</div>
+          <button class="btn-delete" onclick="deleteOpex(${e.id})">✕</button>
+        </div>
+      </div>`).join('');
+  }
+
+  function deletePersonal(id) { personal=personal.filter(e=>e.id!==id); localStorage.setItem('personal',JSON.stringify(personal)); renderPersonalList(); showToast('🗑 Deleted'); }
+  function deleteOpex(id)     { opex=opex.filter(e=>e.id!==id);         localStorage.setItem('opex',JSON.stringify(opex));         renderOpexList();     showToast('🗑 Deleted'); }
+
+  // ── SUMMARY ──
+  function renderSummary() {
+    const fp = filterByPeriod(personal);
+    const fo = filterByPeriod(opex);
+    const pCur={};
+    fp.forEach(e=>{ const c=e.currency||'RMB',s=e.symbol||'¥'; if(!pCur[c])pCur[c]={symbol:s,cat:{},total:0}; pCur[c].cat[e.category]=(pCur[c].cat[e.category]||0)+e.amount; pCur[c].total+=e.amount; });
+    const pPay={};
+    fp.forEach(e=>{ const c=e.currency||'RMB',s=e.symbol||'¥'; if(!pPay[c])pPay[c]={symbol:s,pay:{}}; pPay[c].pay[e.payer]=(pPay[c].pay[e.payer]||0)+e.amount; });
+    const catEl=document.getElementById('sum-p-cat'), payEl=document.getElementById('sum-p-pay');
+    if (!fp.length) { catEl.innerHTML=payEl.innerHTML='<div class="summary-row"><span style="opacity:.4">No data for this period</span></div>'; }
+    else {
+      catEl.innerHTML=Object.entries(pCur).map(([cur,d])=>`<div style="margin-bottom:6px"><div style="font-size:.65rem;opacity:.4;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">${cur}</div>${Object.entries(d.cat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="summary-row"><span>${k}</span><span>${d.symbol}${v.toFixed(2)}</span></div>`).join('')}<div class="summary-row"><span>Total</span><span class="summary-total">${d.symbol}${d.total.toFixed(2)}</span></div></div>`).join('');
+      payEl.innerHTML=Object.entries(pPay).map(([cur,d])=>`<div style="margin-bottom:6px"><div style="font-size:.65rem;opacity:.4;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">${cur}</div>${Object.entries(d.pay).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="summary-row"><span>${k}</span><span>${d.symbol}${v.toFixed(2)}</span></div>`).join('')}</div>`).join('');
+    }
+    const oCat={}; let oTotal=0;
+    fo.forEach(e=>{ oCat[e.category]=(oCat[e.category]||0)+e.amount; oTotal+=e.amount; });
+    const oPhoto={};
+    fo.forEach(e=>{ oPhoto[e.photo||'Pending']=(oPhoto[e.photo||'Pending']||0)+1; });
+    const oCatEl=document.getElementById('sum-o-cat'), oPhotoEl=document.getElementById('sum-o-photo');
+    if (!fo.length) { oCatEl.innerHTML=oPhotoEl.innerHTML='<div class="summary-row"><span style="opacity:.4">No data for this period</span></div>'; }
+    else {
+      oCatEl.innerHTML=Object.entries(oCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="summary-row"><span>${k}</span><span>¥${v.toFixed(2)}</span></div>`).join('')+`<div class="summary-row"><span>TOTAL</span><span class="summary-total-opex">¥${oTotal.toFixed(2)}</span></div>`;
+      oPhotoEl.innerHTML=Object.entries(oPhoto).map(([k,v])=>`<div class="summary-row"><span>📎 ${k}</span><span>${v} invoice${v!==1?'s':''}</span></div>`).join('');
+    }
+  }
+
+  // ── EXPORT PERSONAL ──
+  function exportPersonal() {
+    const filtered = filterByPeriod(personal);
+    if (!filtered.length) return showToast('⚠️ No personal expenses for this period');
+    const sorted = sortByDate(filtered).reverse();
+    const suffix = periodSuffix();
+    const data = [['DATE','Expense','Amount','Who Paid','Comments']];
+    sorted.forEach(e=>{ const mm=String(MONTHS.indexOf(e.month)+1).padStart(2,'0'),dd=String(e.day).padStart(2,'0'),yy=String(e.year||today.getFullYear()).slice(-2); data.push([`${dd}/${mm}/${yy}`,e.category,`${e.symbol||'¥'}${e.amount.toFixed(2)}`,e.payer,e.comment||'']); });
+    const wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet(data);
+    ws['!cols']=[{wch:12},{wch:16},{wch:12},{wch:22},{wch:35}];
+    XLSX.utils.book_append_sheet(wb,ws,'Personal Expenses');
+    XLSX.writeFile(wb,`personal-expenses-${suffix}.xlsx`);
+    showToast('✅ Personal Excel exported!');
+  }
+
+  // ── EXPORT OPEX ──
+  function exportOpex() {
+    const filtered = filterByPeriod(opex);
+    if (!filtered.length) return showToast('⚠️ No OPEX entries for this period');
+    const sorted = sortByDate(filtered).reverse();
+    const suffix = periodSuffix();
+    const data = [['Date Received','From Whom','Description','Fapiao Number','Amount (RMB)','Category','Sent to @L?','Photo/Scan Saved','Comments']];
+    sorted.forEach(e=>{ const mm=String(MONTHS.indexOf(e.month)+1).padStart(2,'0'),dd=String(e.day).padStart(2,'0'),yy=String(e.year||today.getFullYear()).slice(-2); data.push([`${dd}/${mm}/${yy}`,e.from||'',e.description||'',e.fapiao||'',`¥${e.amount.toFixed(2)}`,e.category,e.sent||'N/A',e.photo||'Pending',e.comments||'']); });
+    const wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet(data);
+    ws['!cols']=[{wch:14},{wch:20},{wch:28},{wch:16},{wch:13},{wch:18},{wch:13},{wch:16},{wch:30}];
+    XLSX.utils.book_append_sheet(wb,ws,'OPEX');
+    XLSX.writeFile(wb,`company-opex-${suffix}.xlsx`);
+    showToast('✅ OPEX Excel exported!');
+  }
+
+  // ── TOAST ──
+  function showToast(msg) {
+    const t=document.getElementById('toast');
+    t.textContent=msg; t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'),2500);
+  }
+</script>
+</body>
+</html>
