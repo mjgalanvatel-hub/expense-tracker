@@ -325,7 +325,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygHO-C4d1gx03HmsnP8GiRLWi1PJ29TCXfUm-v7ixz8DmKb9ht9cGhqVUebeZDJ38E2g/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJMnMc7Jg5vxJrG2Sg8azoXG2zOXqyMTtlsE2tbNMZi7PWisuRz8OKrRJt1iIRE_2v9Q/exec';
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   // ── STATE ──
@@ -373,11 +373,18 @@
     const payload = JSON.stringify({ sheet: `${type === 'personal' ? 'Personal' : 'OPEX'} - ${sName}`, headers, row });
 
     try {
-      // Use a URL-encoded form approach compatible with no-cors
-      const form = new FormData();
-      form.append('payload', payload);
-      await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: form });
-      setSyncStatus('synced', `Synced · ${new Date().toLocaleTimeString()}`);
+      const response = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+      });
+      const result = await response.json();
+      if (result.success) {
+        setSyncStatus('synced', `Synced · ${new Date().toLocaleTimeString()}`);
+      } else {
+        setSyncStatus('error', 'Sync failed — saved locally');
+      }
     } catch(err) {
       setSyncStatus('error', 'Sync failed — saved locally');
     }
