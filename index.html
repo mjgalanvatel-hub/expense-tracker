@@ -325,7 +325,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJMnMc7Jg5vxJrG2Sg8azoXG2zOXqyMTtlsE2tbNMZi7PWisuRz8OKrRJt1iIRE_2v9Q/exec';
+  const SHEETDB_URL = 'https://sheetdb.io/api/v1/bnfjpa3plzyju';
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   // ── STATE ──
@@ -345,42 +345,47 @@
     txt.textContent = msg;
   }
 
-  // ── SHEET NAME from month+year ──
-  function sheetName(month, year) {
-    return `${month} ${year}`;
-  }
-
-  // ── SEND ROW TO GOOGLE SHEETS ──
+  // ── SEND ROW TO SHEETDB ──
   async function syncToSheets(type, entry) {
     setSyncStatus('syncing', 'Syncing...');
-    const sName = sheetName(entry.month, entry.year);
 
-    let headers, row;
+    const mm = String(MONTHS.indexOf(entry.month)+1).padStart(2,'0');
+    const dd = String(entry.day).padStart(2,'0');
+    const yy = String(entry.year).slice(-2);
+    const dateStr = `${dd}/${mm}/${yy}`;
+    const sheetTab = `${entry.month} ${entry.year}`;
+
+    let rowData;
     if (type === 'personal') {
-      const mm = String(MONTHS.indexOf(entry.month)+1).padStart(2,'0');
-      const dd = String(entry.day).padStart(2,'0');
-      const yy = String(entry.year).slice(-2);
-      headers = ['DATE','Expense','Amount','Who Paid','Comments'];
-      row = [`${dd}/${mm}/${yy}`, entry.category, `${entry.symbol}${entry.amount.toFixed(2)}`, entry.payer, entry.comment||''];
+      rowData = {
+        'DATE': dateStr,
+        'Expense': entry.category,
+        'Amount': `${entry.symbol}${entry.amount.toFixed(2)}`,
+        'Who Paid': entry.payer,
+        'Comments': entry.comment || ''
+      };
     } else {
-      const mm = String(MONTHS.indexOf(entry.month)+1).padStart(2,'0');
-      const dd = String(entry.day).padStart(2,'0');
-      const yy = String(entry.year).slice(-2);
-      headers = ['Date Received','From Whom','Description','Fapiao Number','Amount (RMB)','Category','Sent to @L?','Photo/Scan Saved','Comments'];
-      row = [`${dd}/${mm}/${yy}`, entry.from||'', entry.description||'', entry.fapiao||'', `¥${entry.amount.toFixed(2)}`, entry.category, entry.sent||'N/A', entry.photo||'Pending', entry.comments||''];
+      rowData = {
+        'Date Received': dateStr,
+        'From Whom': entry.from || '',
+        'Description': entry.description || '',
+        'Fapiao Number': entry.fapiao || '',
+        'Amount (RMB)': `¥${entry.amount.toFixed(2)}`,
+        'Category': entry.category,
+        'Sent to @L?': entry.sent || 'N/A',
+        'Photo/Scan Saved': entry.photo || 'Pending',
+        'Comments': entry.comments || ''
+      };
     }
 
-    const payload = JSON.stringify({ sheet: `${type === 'personal' ? 'Personal' : 'OPEX'} - ${sName}`, headers, row });
-
     try {
-      const response = await fetch(SCRIPT_URL, {
+      const response = await fetch(`${SHEETDB_URL}?sheet=${encodeURIComponent(sheetTab)}`, {
         method: 'POST',
-        mode: 'cors',
         headers: { 'Content-Type': 'application/json' },
-        body: payload
+        body: JSON.stringify({ data: rowData })
       });
       const result = await response.json();
-      if (result.success) {
+      if (result.created) {
         setSyncStatus('synced', `Synced · ${new Date().toLocaleTimeString()}`);
       } else {
         setSyncStatus('error', 'Sync failed — saved locally');
