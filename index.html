@@ -472,6 +472,9 @@
   window.addEventListener('online',  () => document.getElementById('offline-banner').classList.remove('show'));
   if (!navigator.onLine) document.getElementById('offline-banner').classList.add('show');
 
+  // Load data from Google Sheets on startup
+  loadFromSheets();
+
   // ── TAB SWITCH ──
   function switchTab(tab, btn) {
     document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
@@ -595,6 +598,80 @@
       </div>`).join('');
   }
 
+  // ── LOAD FROM SHEETDB ──
+  const SHEET_MONTHS = ['August','September','October','November','December','January','February','March','April','May','June','July'];
+
+  async function loadFromSheets() {
+    setSyncStatus('syncing', 'Loading data...');
+    try {
+      let allPersonal = [];
+      let allOpex = [];
+
+      for (const month of SHEET_MONTHS) {
+        // Load personal
+        const pRes = await fetch(`${SHEETDB_URL}?sheet=Personal-${month}`);
+        const pData = await pRes.json();
+        if (Array.isArray(pData) && pData.length > 0) {
+          pData.forEach(row => {
+            if (!row.DATE) return;
+            const parts = row.DATE.split('/');
+            if (parts.length < 3) return;
+            const amount = parseFloat((row.Amount||'0').replace(/[^0-9.]/g,'')) || 0;
+            const symbol = (row.Amount||'¥')[0];
+            const currency = symbol === '€' ? 'EUR' : symbol === '$' ? 'USD' : 'RMB';
+            allPersonal.push({
+              id: `${month}-${row.DATE}-${Math.random()}`,
+              day: parseInt(parts[0]),
+              month: month,
+              year: 2000 + parseInt(parts[2]),
+              category: row.Expense || '',
+              amount,
+              currency,
+              symbol: symbol === '¥' || symbol === 'Â' ? '¥' : symbol,
+              payer: row['Who Paid'] || '',
+              comment: row.Comments || ''
+            });
+          });
+        }
+
+        // Load opex
+        const oRes = await fetch(`${SHEETDB_URL}?sheet=OPEX-${month}`);
+        const oData = await oRes.json();
+        if (Array.isArray(oData) && oData.length > 0) {
+          oData.forEach(row => {
+            if (!row['Date Received']) return;
+            const parts = (row['Date Received']||'').split('/');
+            if (parts.length < 3) return;
+            const amount = parseFloat((row['Amount (RMB)']||'0').replace(/[^0-9.]/g,'')) || 0;
+            allOpex.push({
+              id: `${month}-${row['Date Received']}-${Math.random()}`,
+              day: parseInt(parts[0]),
+              month: month,
+              year: 2000 + parseInt(parts[2]),
+              from: row['From Whom'] || '',
+              description: row['Description'] || '',
+              fapiao: row['Fapiao Number'] || '',
+              amount,
+              category: row['Category'] || '',
+              sent: row['Sent to @L?'] || 'N/A',
+              photo: row['Photo/Scan Saved'] || 'Pending',
+              comments: row['Comments'] || ''
+            });
+          });
+        }
+      }
+
+      personal = allPersonal;
+      opex = allOpex;
+      localStorage.setItem('personal', JSON.stringify(personal));
+      localStorage.setItem('opex', JSON.stringify(opex));
+      setSyncStatus('synced', `Loaded · ${new Date().toLocaleTimeString()}`);
+      renderPersonalList(); renderOpexList(); renderSummary();
+    } catch(err) {
+      setSyncStatus('error', 'Load failed — using local data');
+    }
+  }
+
   function deletePersonal(id) { personal=personal.filter(e=>e.id!==id); localStorage.setItem('personal',JSON.stringify(personal)); renderPersonalList(); showToast('🗑 Deleted'); }
   function deleteOpex(id)     { opex=opex.filter(e=>e.id!==id);         localStorage.setItem('opex',JSON.stringify(opex));         renderOpexList();     showToast('🗑 Deleted'); }
 
@@ -663,3 +740,4 @@
 </script>
 </body>
 </html>
+
