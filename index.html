@@ -353,7 +353,7 @@
     const dd = String(entry.day).padStart(2,'0');
     const yy = String(entry.year).slice(-2);
     const dateStr = `${dd}/${mm}/${yy}`;
-    const sheetTab = `${entry.month} ${entry.year}`;
+    const sheetTab = type === 'personal' ? `Personal-${entry.month}` : `OPEX-${entry.month}`;
 
     let rowData;
     if (type === 'personal') {
