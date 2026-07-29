@@ -602,13 +602,13 @@
   const SHEET_MONTHS = ['August','September','October','November','December','January','February','March','April','May','June','July'];
 
   function parseDate(dateStr) {
-    // Handle dd/mm/yy format
     if (!dateStr) return { day:1, month:'January', year:2026 };
     const parts = String(dateStr).split('/');
     if (parts.length === 3) {
       const day = parseInt(parts[0]);
       const monthNum = parseInt(parts[1]) - 1;
-      const year = 2000 + parseInt(parts[2]);
+      const yearRaw = parseInt(parts[2]);
+      const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
       return { day, month: MONTHS[monthNum], year };
     }
     return { day:1, month:'January', year:2026 };
@@ -687,7 +687,7 @@
       renderOpexList();
       renderSummary();
     } catch(err) {
-      setSyncStatus('error', 'Load failed — using local data');
+      setSyncStatus('error', `Error: ${err.message}`);
     }
   }
 
@@ -759,4 +759,5 @@
 </script>
 </body>
 </html>
+
 
