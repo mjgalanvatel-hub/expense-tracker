@@ -325,7 +325,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  const SHEETDB_URL = 'https://sheetdb.io/api/v1/bnfjpa3plzyju';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxlI6Tbfvfw17noO5Rtvu53A3Q8W_GshCTnfLgy5BOlkt0WBHhGzs5k27lR2uK4SN5HbA/exec';
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const SHEET_MONTHS = ['August','September','October','November','December','January','February','March','April','May','June','July'];
 
@@ -346,53 +346,123 @@
     txt.textContent = msg;
   }
 
-  // ── SEND ROW TO SHEETDB ──
-  async function syncToSheets(type, entry) {
-    setSyncStatus('syncing', 'Syncing...');
+  // ── PARSE HELPERS ──
+  function parseDate(dateStr) {
+    if (!dateStr) return { day:1, month:'January', year:2026 };
+    const parts = String(dateStr).split('/');
+    if (parts.length === 3) {
+      const day = parseInt(parts[0]);
+      const monthNum = parseInt(parts[1]) - 1;
+      const yearRaw = parseInt(parts[2]);
+      const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+      return { day, month: MONTHS[monthNum], year };
+    }
+    return { day:1, month:'January', year:2026 };
+  }
 
+  function parseAmount(str) {
+    if (!str) return 0;
+    return parseFloat(String(str).replace(/[^0-9.]/g,'')) || 0;
+  }
+
+  function parseSymbol(str) {
+    if (!str) return '¥';
+    const s = String(str).trim();
+    if (s.startsWith('€')) return '€';
+    if (s.startsWith('$')) return '$';
+    return '¥';
+  }
+
+  // ── SAVE TO SHEETS ──
+  async function syncToSheets(type, entry) {
     const mm = String(MONTHS.indexOf(entry.month)+1).padStart(2,'0');
     const dd = String(entry.day).padStart(2,'0');
-    const yy = String(entry.year).slice(-2);
-    const dateStr = `${dd}/${mm}/${yy}`;
+    const yyyy = String(entry.year);
+    const dateStr = `${dd}/${mm}/${yyyy}`;
     const sheetTab = type === 'personal' ? `Personal-${entry.month}` : `OPEX-${entry.month}`;
 
-    let rowData;
+    let headers, row;
     if (type === 'personal') {
-      rowData = {
-        'DATE': dateStr,
-        'Expense': entry.category,
-        'Amount': `${entry.symbol}${entry.amount.toFixed(2)}`,
-        'Who Paid': entry.payer,
-        'Comments': entry.comment || ''
-      };
+      headers = ['DATE','Expense','Amount','Who Paid','Comments'];
+      row = [dateStr, entry.category, `${entry.symbol}${entry.amount.toFixed(2)}`, entry.payer, entry.comment||''];
     } else {
-      rowData = {
-        'Date Received': dateStr,
-        'From Whom': entry.from || '',
-        'Description': entry.description || '',
-        'Fapiao Number': entry.fapiao || '',
-        'Amount (RMB)': `¥${entry.amount.toFixed(2)}`,
-        'Category': entry.category,
-        'Sent to @L?': entry.sent || 'N/A',
-        'Photo/Scan Saved': entry.photo || 'Pending',
-        'Comments': entry.comments || ''
-      };
+      headers = ['Date Received','From Whom','Description','Fapiao Number','Amount (RMB)','Category','Sent to @L?','Photo/Scan Saved','Comments'];
+      row = [dateStr, entry.from||'', entry.description||'', entry.fapiao||'', `¥${entry.amount.toFixed(2)}`, entry.category, entry.sent||'N/A', entry.photo||'Pending', entry.comments||''];
     }
 
     try {
-      const response = await fetch(`${SHEETDB_URL}?sheet=${encodeURIComponent(sheetTab)}`, {
+      const res = await fetch(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: rowData })
+        body: JSON.stringify({ sheet: sheetTab, headers, row })
       });
-      const result = await response.json();
-      if (result.created) {
+      const result = await res.json();
+      if (result.success) {
         setSyncStatus('synced', `Synced · ${new Date().toLocaleTimeString()}`);
       } else {
         setSyncStatus('error', 'Sync failed — saved locally');
       }
     } catch(err) {
       setSyncStatus('error', 'Sync failed — saved locally');
+    }
+  }
+
+  // ── LOAD ALL DATA (single call) ──
+  async function loadFromSheets() {
+    setSyncStatus('syncing', 'Loading...');
+    try {
+      const res = await fetch(`${SCRIPT_URL}?action=getAll`);
+      const data = await res.json();
+
+      let allPersonal = [];
+      let allOpex = [];
+
+      Object.entries(data).forEach(([sheetName, rows]) => {
+        if (!Array.isArray(rows)) return;
+        const isPersonal = sheetName.startsWith('Personal-');
+        const isOpex = sheetName.startsWith('OPEX-');
+        const month = sheetName.split('-')[1];
+
+        rows.forEach((row, i) => {
+          if (isPersonal) {
+            if (!row.DATE) return;
+            const { day, month: m, year } = parseDate(row.DATE);
+            const sym = parseSymbol(row.Amount);
+            const cur = sym === '€' ? 'EUR' : sym === '$' ? 'USD' : 'RMB';
+            allPersonal.push({
+              id: `p-${sheetName}-${i}`,
+              day, month: m || month, year,
+              category: row.Expense || '',
+              amount: parseAmount(row.Amount),
+              currency: cur, symbol: sym,
+              payer: row['Who Paid'] || '',
+              comment: row.Comments || ''
+            });
+          } else if (isOpex) {
+            if (!row['Date Received']) return;
+            const { day, month: m, year } = parseDate(row['Date Received']);
+            allOpex.push({
+              id: `o-${sheetName}-${i}`,
+              day, month: m || month, year,
+              from: row['From Whom'] || '',
+              description: row['Description'] || '',
+              fapiao: row['Fapiao Number'] || '',
+              amount: parseAmount(row['Amount (RMB)']),
+              category: row['Category'] || '',
+              sent: row['Sent to @L?'] || 'N/A',
+              photo: row['Photo/Scan Saved'] || 'Pending',
+              comments: row['Comments'] || ''
+            });
+          }
+        });
+      });
+
+      personal = allPersonal;
+      opex = allOpex;
+      setSyncStatus('synced', `Synced · ${new Date().toLocaleTimeString()}`);
+      renderPersonalList(); renderOpexList(); renderSummary();
+    } catch(err) {
+      setSyncStatus('error', `Error: ${err.message}`);
     }
   }
 
